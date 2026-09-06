@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 import sys
 
@@ -9,6 +10,9 @@ if str(SRC_ROOT) not in sys.path:
 
 from rl_rewriter.dataset import clean_dataset, load_dataset
 from rl_rewriter.style_classifier import train_and_save_style_classifier
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger(__name__)
 
 
 def main() -> None:
@@ -26,13 +30,13 @@ def main() -> None:
         output_path=model_output_path,
     )
 
-    print("Style classifier training finished.")
-    print(f"Training rows: {len(train_df)}")
-    print(f"Validation rows: {len(validation_df)}")
-    print(f"Test rows: {len(test_df)}")
-    print(f"Saved classifier: {training_info['output_path']}")
-    print(f"Backend: {training_info['backend']}")
-    print(f"Training examples used: {training_info['num_examples']}")
+    logger.info("Style classifier training finished.")
+    logger.info("Training rows: %d", len(train_df))
+    logger.info("Validation rows: %d", len(validation_df))
+    logger.info("Test rows: %d", len(test_df))
+    logger.info("Saved classifier: %s", training_info["output_path"])
+    logger.info("Backend: %s", training_info["backend"])
+    logger.info("Training examples used: %d", training_info["num_examples"])
 
 
 if __name__ == "__main__":

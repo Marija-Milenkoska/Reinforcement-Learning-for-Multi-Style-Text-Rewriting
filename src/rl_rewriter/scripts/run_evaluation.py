@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 import sys
 
@@ -10,6 +11,9 @@ if str(SRC_ROOT) not in sys.path:
 from rl_rewriter.evaluation import compare_generation_strategies, render_summary_markdown
 from rl_rewriter.pipeline import RewriterPipeline
 from rl_rewriter.style_classifier import train_and_save_style_classifier
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger(__name__)
 
 
 def main() -> None:
@@ -33,8 +37,8 @@ def main() -> None:
         num_candidates=5,
     )
 
-    print("Evaluation finished")
-    print(render_summary_markdown(summaries))
+    logger.info("Evaluation finished")
+    logger.info("\n%s", render_summary_markdown(summaries))
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import logging
 from pathlib import Path
 import random
 import sys
@@ -10,6 +11,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 SRC_ROOT = PROJECT_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger(__name__)
 
 
 BASE_RECORDS = [
@@ -172,8 +176,8 @@ def main() -> None:
     write_csv(PROJECT_ROOT / "data" / "processed" / "train.csv", train_rows)
     write_csv(PROJECT_ROOT / "data" / "processed" / "validation.csv", validation_rows)
     write_csv(PROJECT_ROOT / "data" / "processed" / "test.csv", test_rows)
-    print(f"Generated {len(rows)} rows total.")
-    print(f"Train: {len(train_rows)} | Validation: {len(validation_rows)} | Test: {len(test_rows)}")
+    logger.info("Generated %d rows total.", len(rows))
+    logger.info("Train: %d | Validation: %d | Test: %d", len(train_rows), len(validation_rows), len(test_rows))
 
 
 if __name__ == "__main__":

@@ -26,12 +26,23 @@ def ensure_artifacts() -> None:
 ensure_artifacts()
 pipeline = RewriterPipeline()
 examples = pipeline.load_examples(DATASET_PATH)
-benchmark_rows, benchmark_summaries = compare_generation_strategies(
-    pipeline=pipeline,
-    dataset_path=DATASET_PATH,
-    output_path=PROJECT_ROOT / "results" / "reward_outputs.csv",
-    num_candidates=5,
-)
+
+# Benchmark is computed lazily on first user request, not at startup.
+_benchmark_cache: str = ""
+
+
+def run_benchmark() -> str:
+    global _benchmark_cache
+    if _benchmark_cache:
+        return _benchmark_cache
+    _, summaries = compare_generation_strategies(
+        pipeline=pipeline,
+        dataset_path=DATASET_PATH,
+        output_path=PROJECT_ROOT / "results" / "reward_outputs.csv",
+        num_candidates=5,
+    )
+    _benchmark_cache = render_summary_markdown(summaries)
+    return _benchmark_cache
 
 
 def build_reward_chart(result) -> str:
@@ -98,7 +109,6 @@ with gr.Blocks(title="RL Multi-Style Text Rewriter") as demo:
         "Rewrite neutral text into poetic, journalistic, or formal style using "
         "multi-candidate generation and reward-based selection."
     )
-    benchmark_markdown = render_summary_markdown(benchmark_summaries)
 
     with gr.Row():
         with gr.Column(scale=2):
@@ -137,7 +147,8 @@ with gr.Blocks(title="RL Multi-Style Text Rewriter") as demo:
         backend_summary = gr.Markdown(label="Model backends")
 
     with gr.Row():
-        benchmark_table = gr.Markdown(label="Baseline vs reward-selected benchmark", value=benchmark_markdown)
+        benchmark_button = gr.Button("Run baseline vs reward-selected benchmark")
+        benchmark_table = gr.Markdown(label="Benchmark results")
 
     example_rows = [[row["original_text"], row["target_style"]] for row in examples]
     gr.Examples(examples=example_rows, inputs=[text_input, style_input], label="Demo examples")
@@ -161,6 +172,12 @@ with gr.Blocks(title="RL Multi-Style Text Rewriter") as demo:
         fn=compare_styles,
         inputs=[text_input, candidates_input],
         outputs=[compare_output],
+    )
+
+    benchmark_button.click(
+        fn=run_benchmark,
+        inputs=[],
+        outputs=[benchmark_table],
     )
 
 
