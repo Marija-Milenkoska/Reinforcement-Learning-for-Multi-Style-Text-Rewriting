@@ -93,8 +93,6 @@ def build_training_examples(dataset_paths: list[str | Path]) -> tuple[list[str],
     for dataset_path in dataset_paths:
         rows = clean_dataset(load_dataset(dataset_path))
         for row in rows:
-            texts.append(row["original_text"])
-            labels.append("neutral")
             texts.append(row["styled_text"])
             labels.append(row["target_style"])
 
