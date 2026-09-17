@@ -3,7 +3,13 @@ from pathlib import Path
 import csv
 import gradio as gr
 
-from src.rl_rewriter.evaluation import compare_generation_strategies, render_summary_markdown
+from src.rl_rewriter.evaluation import (
+    compare_generation_strategies,
+    render_summary_markdown,
+    _bleu,
+    _rouge,
+    _meteor,
+)
 from src.rl_rewriter.style_classifier import train_and_save_style_classifier
 from src.rl_rewriter.pipeline import RewriterPipeline
 
@@ -86,6 +92,7 @@ def build_backend_summary(result) -> str:
 
 def rewrite_text(text: str, style: str, num_candidates: int):
     result = pipeline.rewrite(text=text, target_style=style, num_candidates=num_candidates)
+    rouge = _rouge(text, result.best_text)
     return (
         result.best_text,
         f"{result.style_score:.3f}",
@@ -95,6 +102,10 @@ def rewrite_text(text: str, style: str, num_candidates: int):
         pipeline.format_candidates(result),
         build_reward_chart(result),
         build_backend_summary(result),
+        f"{_bleu(text, result.best_text):.3f}",
+        f"{rouge['rouge1']:.3f}",
+        f"{rouge['rougeL']:.3f}",
+        f"{_meteor(text, result.best_text):.3f}",
     )
 
 
@@ -143,6 +154,14 @@ with gr.Blocks(title="RL Multi-Style Text Rewriter") as demo:
         total_reward = gr.Textbox(label="Total reward")
 
     with gr.Row():
+        gr.Markdown("**NLG metrics** (vs. original — higher = more meaning preserved)")
+    with gr.Row():
+        bleu_score = gr.Textbox(label="BLEU")
+        rouge1_score = gr.Textbox(label="ROUGE-1")
+        rougeL_score = gr.Textbox(label="ROUGE-L")
+        meteor_score = gr.Textbox(label="METEOR")
+
+    with gr.Row():
         reward_chart = gr.HTML(label="Reward chart")
         backend_summary = gr.Markdown(label="Model backends")
 
@@ -165,6 +184,10 @@ with gr.Blocks(title="RL Multi-Style Text Rewriter") as demo:
             candidate_scores,
             reward_chart,
             backend_summary,
+            bleu_score,
+            rouge1_score,
+            rougeL_score,
+            meteor_score,
         ],
     )
 
