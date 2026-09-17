@@ -1,5 +1,22 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
+
+
+_CONFIG_FILE = Path(__file__).resolve().parents[2] / "config.yaml"
+
+
+def _load_yaml() -> dict[str, Any]:
+    if not _CONFIG_FILE.exists():
+        return {}
+    try:
+        import yaml
+        with open(_CONFIG_FILE, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    except Exception:
+        return {}
 
 
 @dataclass(slots=True)
@@ -25,3 +42,31 @@ class ProjectConfig:
     styles: tuple[str, ...] = ("poetic", "journalistic", "formal")
     reward_weights: RewardWeights = field(default_factory=RewardWeights)
     model: ModelConfig = field(default_factory=ModelConfig)
+
+    def __post_init__(self) -> None:
+        cfg = _load_yaml()
+        if not cfg:
+            return
+
+        if "reward_weights" in cfg:
+            rw = cfg["reward_weights"]
+            self.reward_weights = RewardWeights(
+                style=float(rw.get("style", self.reward_weights.style)),
+                meaning=float(rw.get("meaning", self.reward_weights.meaning)),
+                fluency=float(rw.get("fluency", self.reward_weights.fluency)),
+            )
+
+        if "model" in cfg:
+            m = cfg["model"]
+            self.model = ModelConfig(
+                generator_model_name=m.get("generator_model_name", self.model.generator_model_name),
+                sentence_model_name=m.get("sentence_model_name", self.model.sentence_model_name),
+                device=m.get("device", self.model.device),
+                max_new_tokens=int(m.get("max_new_tokens", self.model.max_new_tokens)),
+                fine_tuned_generator_path=self.model.fine_tuned_generator_path,
+                style_classifier_name=self.model.style_classifier_name,
+                style_classifier_path=self.model.style_classifier_path,
+            )
+
+        if "styles" in cfg:
+            self.styles = tuple(cfg["styles"])
