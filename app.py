@@ -84,7 +84,27 @@ def build_backend_summary(result) -> str:
     )
 
 
+MAX_INPUT_CHARS = 1000
+MIN_INPUT_CHARS = 10
+
+_EMPTY_REWRITE = ("", "", "", "", "", "", "", "")
+
+
+def _validate(text: str) -> str | None:
+    """Return an error message string if input is invalid, else None."""
+    if not text or not text.strip():
+        return "Please enter some text before rewriting."
+    if len(text.strip()) < MIN_INPUT_CHARS:
+        return f"Input is too short (minimum {MIN_INPUT_CHARS} characters)."
+    if len(text) > MAX_INPUT_CHARS:
+        return f"Input is too long — please keep it under {MAX_INPUT_CHARS} characters (got {len(text)})."
+    return None
+
+
 def rewrite_text(text: str, style: str, num_candidates: int):
+    error = _validate(text)
+    if error:
+        return (error, "", "", "", "", "", "", "")
     result = pipeline.rewrite(text=text, target_style=style, num_candidates=num_candidates)
     return (
         result.best_text,
@@ -99,6 +119,9 @@ def rewrite_text(text: str, style: str, num_candidates: int):
 
 
 def compare_styles(text: str, num_candidates: int):
+    error = _validate(text)
+    if error:
+        return error
     results = pipeline.compare_all_styles(text=text, num_candidates=num_candidates)
     return build_compare_table(results)
 
