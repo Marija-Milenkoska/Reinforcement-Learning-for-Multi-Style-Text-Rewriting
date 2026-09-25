@@ -31,12 +31,14 @@ from rl_rewriter.config import ProjectConfig
 from rl_rewriter.dataset import clean_dataset, load_dataset
 from rl_rewriter.generator import PROMPTS
 from rl_rewriter.scoring import RewardScorer
+from rl_rewriter.training_metrics import write_training_metrics
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 TRAIN_PATH = PROJECT_ROOT / "data" / "processed" / "train.csv"
 OUTPUT_PATH = PROJECT_ROOT / "models" / "flan-t5-reinforce"
+METRICS_PATH = PROJECT_ROOT / "results" / "training_metrics.csv"
 
 
 def _log_prob_of_generation(model, tokenizer, prompt: str, generated_text: str, device: str):
@@ -106,10 +108,14 @@ def train(
     logger.info("Loaded %d training examples", len(dataset))
 
     baseline = 0.0
+    epoch_metrics: list[dict[str, float | int]] = []
 
     for epoch in range(1, num_epochs + 1):
         total_reward = 0.0
         total_loss = 0.0
+        total_style = 0.0
+        total_meaning = 0.0
+        total_fluency = 0.0
 
         for step, record in enumerate(dataset, start=1):
             prompt = PROMPTS[record["target_style"]].format(text=record["original_text"])
@@ -129,9 +135,10 @@ def train(
             generated_text = tokenizer.decode(output_ids[0], skip_special_tokens=True)
 
             # Step 2: compute reward
-            reward = scorer.calculate_reward(
+            score = scorer.calculate_reward(
                 record["original_text"], generated_text, record["target_style"]
-            ).total
+            )
+            reward = score.total
 
             # Step 3: advantage = reward - running baseline (reduces variance)
             baseline = baseline_decay * baseline + (1 - baseline_decay) * reward
@@ -149,6 +156,9 @@ def train(
 
             total_reward += reward
             total_loss += loss.item()
+            total_style += score.style
+            total_meaning += score.meaning
+            total_fluency += score.fluency
 
             if step % 10 == 0:
                 logger.info(
@@ -158,6 +168,20 @@ def train(
 
         avg_reward = total_reward / max(len(dataset), 1)
         avg_loss = total_loss / max(len(dataset), 1)
+        epoch_metrics.append(
+            {
+                "epoch": epoch,
+                "avg_reward": avg_reward,
+                "avg_loss": avg_loss,
+                "avg_style_score": total_style / max(len(dataset), 1),
+                "avg_meaning_score": total_meaning / max(len(dataset), 1),
+                "avg_fluency_score": total_fluency / max(len(dataset), 1),
+                "baseline": baseline,
+                "examples": len(dataset),
+            }
+        )
+        # Persist every epoch so the UI can show progress while training continues.
+        write_training_metrics(METRICS_PATH, epoch_metrics)
         logger.info(
             "Epoch %d/%d done — avg_reward=%.3f  avg_loss=%.4f",
             epoch, num_epochs, avg_reward, avg_loss,
@@ -166,6 +190,7 @@ def train(
     OUTPUT_PATH.mkdir(parents=True, exist_ok=True)
     model.save_pretrained(OUTPUT_PATH)
     tokenizer.save_pretrained(OUTPUT_PATH)
+    logger.info("Saved training dashboard metrics to %s", METRICS_PATH)
     logger.info("Saved REINFORCE-trained model to %s", OUTPUT_PATH)
 
 

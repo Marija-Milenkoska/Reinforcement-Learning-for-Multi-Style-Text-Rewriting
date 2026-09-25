@@ -12,6 +12,7 @@ from src.rl_rewriter.evaluation import (
 )
 from src.rl_rewriter.style_classifier import train_and_save_style_classifier
 from src.rl_rewriter.pipeline import RewriterPipeline
+from src.rl_rewriter.training_metrics import load_training_metrics
 
 
 PROJECT_ROOT = Path(__file__).parent
@@ -19,6 +20,7 @@ DATASET_PATH = PROJECT_ROOT / "data" / "processed" / "test.csv"
 TRAIN_PATH = PROJECT_ROOT / "data" / "processed" / "train.csv"
 VALIDATION_PATH = PROJECT_ROOT / "data" / "processed" / "validation.csv"
 STYLE_CLASSIFIER_PATH = PROJECT_ROOT / "models" / "style-classifier" / "style_classifier.pkl"
+TRAINING_METRICS_PATH = PROJECT_ROOT / "results" / "training_metrics.csv"
 
 
 def ensure_artifacts() -> None:
@@ -87,6 +89,70 @@ def build_backend_summary(result) -> str:
     return (
         f"Style backend: `{result.style_backend}`\n\n"
         f"Meaning backend: `{result.meaning_backend}`"
+    )
+
+
+def _line_points(
+    values: list[float],
+    low: float,
+    high: float,
+    width: int = 460,
+    height: int = 170,
+) -> str:
+    if not values:
+        return ""
+    span = high - low or 1.0
+    horizontal_step = width / max(len(values) - 1, 1)
+    return " ".join(
+        f"{index * horizontal_step:.1f},{height - ((value - low) / span * (height - 24) + 12):.1f}"
+        for index, value in enumerate(values)
+    )
+
+
+def _dashboard_chart(title: str, metrics: list[dict[str, float | int]], series: list[tuple[str, str, str]]) -> str:
+    legend = "".join(
+        f"<span style='margin-right:14px;color:{color};font-weight:600;'>{label}</span>"
+        for label, _, color in series
+    )
+    all_values = [float(row[key]) for _, key, _ in series for row in metrics]
+    low, high = min(all_values), max(all_values)
+    lines = "".join(
+        f"<polyline fill='none' stroke='{color}' stroke-width='3' points='"
+        f"{_line_points([float(row[key]) for row in metrics], low, high)}' />"
+        for _, key, color in series
+    )
+    latest = metrics[-1]
+    values = " | ".join(f"{label}: {float(latest[key]):.3f}" for label, key, _ in series)
+    return (
+        "<div style='background:#f8fafc;border:1px solid #dbe4ea;border-radius:12px;padding:14px;'>"
+        f"<div style='font-size:16px;font-weight:700;margin-bottom:8px;'>{title}</div>{legend}"
+        f"<svg viewBox='0 0 460 170' style='width:100%;height:190px;margin-top:8px;' aria-label='{title} chart'>"
+        "<line x1='0' y1='158' x2='460' y2='158' stroke='#cbd5e1' stroke-width='1' />"
+        f"{lines}</svg><div style='font-size:13px;color:#475569;'>Latest epoch {latest['epoch']}: {values}</div></div>"
+    )
+
+
+def render_training_dashboard() -> str:
+    metrics = load_training_metrics(TRAINING_METRICS_PATH)
+    if not metrics:
+        return (
+            "<div style='padding:16px;border:1px dashed #94a3b8;border-radius:12px;color:#475569;'>"
+            "No training metrics yet. Run the REINFORCE training script, then refresh this dashboard."
+            "</div>"
+        )
+    return (
+        "<div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;'>"
+        + _dashboard_chart(
+            "Reward and loss by epoch",
+            metrics,
+            [("Reward", "avg_reward", "#0f766e"), ("Loss", "avg_loss", "#ea580c")],
+        )
+        + _dashboard_chart(
+            "Style and semantic preservation by epoch",
+            metrics,
+            [("Style", "avg_style_score", "#7c3aed"), ("Meaning", "avg_meaning_score", "#2563eb")],
+        )
+        + "</div>"
     )
 
 
@@ -188,6 +254,11 @@ with gr.Blocks(title="RL Multi-Style Text Rewriter") as demo:
         reward_chart = gr.HTML(label="Reward chart")
         backend_summary = gr.Markdown(label="Model backends")
 
+    gr.Markdown("## REINFORCE Training Dashboard")
+    gr.Markdown("Run `python src\\rl_rewriter\\scripts\\ppo_prototype.py`, then refresh to view epoch metrics.")
+    training_dashboard = gr.HTML(value=render_training_dashboard())
+    refresh_dashboard_button = gr.Button("Refresh training dashboard")
+
     with gr.Row():
         benchmark_button = gr.Button("Run baseline vs reward-selected benchmark")
         benchmark_table = gr.Markdown(label="Benchmark results")
@@ -224,6 +295,12 @@ with gr.Blocks(title="RL Multi-Style Text Rewriter") as demo:
         fn=run_benchmark,
         inputs=[],
         outputs=[benchmark_table],
+    )
+
+    refresh_dashboard_button.click(
+        fn=render_training_dashboard,
+        inputs=[],
+        outputs=[training_dashboard],
     )
 
 
