@@ -22,7 +22,7 @@ RewardScorer
 Best candidate selected → output
 ```
 
-The REINFORCE training loop (`ppo_prototype.py`) fine-tunes FLAN-T5 on the training set using the composite reward as the policy gradient signal, saving the updated model to `models/flan-t5-reinforce/`.
+The REINFORCE training loop (`reinforce_training.py`) fine-tunes FLAN-T5 on the training set using the composite reward as the policy gradient signal, saving the updated model to `models/flan-t5-reinforce/`.
 
 ---
 
@@ -56,7 +56,7 @@ The REINFORCE training loop (`ppo_prototype.py`) fine-tunes FLAN-T5 on the train
 │       ├── prepare_real_dataset.py        Fetch real data from HuggingFace
 │       ├── train_style_classifier.py      Train and save classifier
 │       ├── fine_tune_generator.py         Supervised fine-tuning (SFT)
-│       ├── ppo_prototype.py               REINFORCE training loop
+│       ├── reinforce_training.py          REINFORCE training loop
 │       └── run_evaluation.py              Full evaluation pipeline
 └── tests/
     ├── test_scoring.py               Unit tests for RewardScorer
@@ -106,7 +106,7 @@ Outputs a comparison table (baseline vs reward-selected) with BLEU, ROUGE-1/2/L,
 
 ### 5. REINFORCE fine-tuning (optional, GPU recommended)
 ```powershell
-python src/rl_rewriter/scripts/ppo_prototype.py
+python src/rl_rewriter/scripts/reinforce_training.py
 ```
 Saves the trained model to `models/flan-t5-reinforce/`, which is picked up automatically on the next run.
 

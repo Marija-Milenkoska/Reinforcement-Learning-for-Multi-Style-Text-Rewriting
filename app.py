@@ -255,7 +255,7 @@ with gr.Blocks(title="RL Multi-Style Text Rewriter") as demo:
         backend_summary = gr.Markdown(label="Model backends")
 
     gr.Markdown("## REINFORCE Training Dashboard")
-    gr.Markdown("Run `python src\\rl_rewriter\\scripts\\ppo_prototype.py`, then refresh to view epoch metrics.")
+    gr.Markdown("Run `python src\\rl_rewriter\\scripts\\reinforce_training.py`, then refresh to view epoch metrics.")
     training_dashboard = gr.HTML(value=render_training_dashboard())
     refresh_dashboard_button = gr.Button("Refresh training dashboard")
 

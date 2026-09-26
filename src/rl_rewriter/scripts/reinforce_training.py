@@ -1,5 +1,5 @@
 """
-REINFORCE training for style-conditioned text rewriting.
+REINFORCE policy-gradient training for style-conditioned text rewriting.
 
 Algorithm (Williams 1992):
   For each training example:
