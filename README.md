@@ -49,6 +49,7 @@ The REINFORCE training loop (`reinforce_training.py`) fine-tunes FLAN-T5 on the 
 │   ├── generator.py                  FLAN-T5 wrapper + fallback templates
 │   ├── pipeline.py                   Main RewriterPipeline class
 │   ├── scoring.py                    RewardScorer (style/meaning/fluency)
+│   ├── human_evaluation.py            Human-rating CSV storage and summaries
 │   ├── style_classifier.py           Naive Bayes style classifier
 │   ├── evaluation.py                 BLEU/ROUGE/METEOR + strategy comparison
 │   └── scripts/
@@ -148,13 +149,25 @@ generation:
 
 ---
 
+## Human evaluation
+
+The Gradio app includes a form for a human evaluation batch of 10, 15, or 20 generated outputs. For each output, an evaluator assigns scores from 1 to 5 for meaning preservation, fluency, and target-style match. The app saves each score in `results/human_evaluations.csv` and shows the completed batch average.
+
+Record the final study result in this table after collecting ratings:
+
+| Evaluation batch | Rated samples | Meaning (1-5) | Fluency (1-5) | Style match (1-5) |
+| --- | ---: | ---: | ---: | ---: |
+| Add completed evaluation result | - | - | - | - |
+
+---
+
 ## Running tests
 
 ```powershell
 python -m pytest tests/ -v
 ```
 
-32 tests covering tokenisation, Jaccard similarity, all three score functions, reward weight application, and the Naive Bayes classifier end-to-end.
+35 tests covering tokenisation, Jaccard similarity, reward scoring, the Naive Bayes classifier, training metrics, and human-evaluation storage.
 
 ---
 

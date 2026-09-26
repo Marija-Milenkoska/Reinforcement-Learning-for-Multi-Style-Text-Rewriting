@@ -1,6 +1,8 @@
 from pathlib import Path
 
 import csv
+import random
+import uuid
 import gradio as gr
 
 from src.rl_rewriter.evaluation import (
@@ -12,6 +14,11 @@ from src.rl_rewriter.evaluation import (
 )
 from src.rl_rewriter.style_classifier import train_and_save_style_classifier
 from src.rl_rewriter.pipeline import RewriterPipeline
+from src.rl_rewriter.human_evaluation import (
+    append_human_rating,
+    render_human_summary,
+    summarize_human_ratings,
+)
 from src.rl_rewriter.training_metrics import load_training_metrics
 
 
@@ -21,6 +28,7 @@ TRAIN_PATH = PROJECT_ROOT / "data" / "processed" / "train.csv"
 VALIDATION_PATH = PROJECT_ROOT / "data" / "processed" / "validation.csv"
 STYLE_CLASSIFIER_PATH = PROJECT_ROOT / "models" / "style-classifier" / "style_classifier.pkl"
 TRAINING_METRICS_PATH = PROJECT_ROOT / "results" / "training_metrics.csv"
+HUMAN_EVALUATION_PATH = PROJECT_ROOT / "results" / "human_evaluations.csv"
 
 
 def ensure_artifacts() -> None:
@@ -203,6 +211,112 @@ def compare_styles(text: str, num_candidates: int):
     return build_compare_table(results)
 
 
+def _empty_human_evaluation_state() -> dict[str, object]:
+    return {"batch_id": "", "index": 0, "items": [], "ratings": []}
+
+
+def _human_item_outputs(
+    state: dict[str, object],
+    status: str,
+    summary: str = "",
+) -> tuple[dict[str, object], str, str, str, str, int, int, int, str]:
+    items = state["items"]
+    index = state["index"]
+    if not items or index >= len(items):
+        return state, status, "", "", "", 3, 3, 3, summary
+    item = items[index]
+    return (
+        state,
+        status,
+        item["original_text"],
+        item["target_style"],
+        item["generated_text"],
+        3,
+        3,
+        3,
+        summary,
+    )
+
+
+def start_human_evaluation(batch_size: int):
+    size = min(int(batch_size), len(examples))
+    selected_examples = random.sample(examples, size)
+    items = []
+    for record in selected_examples:
+        result = pipeline.rewrite(
+            text=record["original_text"],
+            target_style=record["target_style"],
+            num_candidates=5,
+        )
+        items.append(
+            {
+                "original_text": record["original_text"],
+                "target_style": record["target_style"],
+                "generated_text": result.best_text,
+            }
+        )
+
+    state = {
+        "batch_id": uuid.uuid4().hex[:12],
+        "index": 0,
+        "items": items,
+        "ratings": [],
+    }
+    return _human_item_outputs(
+        state,
+        f"Sample 1 of {len(items)}. Rate the generated output, then submit your scores.",
+    )
+
+
+def submit_human_rating(
+    evaluator_id: str,
+    meaning_score: int,
+    fluency_score: int,
+    style_match_score: int,
+    state: dict[str, object],
+):
+    if not state or not state.get("items"):
+        return _human_item_outputs(
+            _empty_human_evaluation_state(),
+            "Start an evaluation batch before submitting a rating.",
+        )
+
+    index = int(state["index"])
+    items = state["items"]
+    if index >= len(items):
+        return _human_item_outputs(state, "This evaluation batch is already complete.")
+
+    item = items[index]
+    rating = append_human_rating(
+        HUMAN_EVALUATION_PATH,
+        {
+            "evaluator_id": evaluator_id.strip() or "anonymous",
+            "batch_id": state["batch_id"],
+            "item_number": index + 1,
+            "original_text": item["original_text"],
+            "target_style": item["target_style"],
+            "generated_text": item["generated_text"],
+            "meaning_score": meaning_score,
+            "fluency_score": fluency_score,
+            "style_match_score": style_match_score,
+        },
+    )
+    state["ratings"].append(rating)
+    state["index"] = index + 1
+
+    if state["index"] >= len(items):
+        summary = render_human_summary(summarize_human_ratings(state["ratings"]))
+        return _human_item_outputs(
+            state,
+            f"Batch complete. Saved {len(state['ratings'])} ratings to results/human_evaluations.csv.",
+            summary,
+        )
+    return _human_item_outputs(
+        state,
+        f"Sample {state['index'] + 1} of {len(items)}. Your previous rating was saved.",
+    )
+
+
 with gr.Blocks(title="RL Multi-Style Text Rewriter") as demo:
     gr.Markdown("# Reinforcement Learning for Multi-Style Text Rewriting")
     gr.Markdown(
@@ -259,6 +373,27 @@ with gr.Blocks(title="RL Multi-Style Text Rewriter") as demo:
     training_dashboard = gr.HTML(value=render_training_dashboard())
     refresh_dashboard_button = gr.Button("Refresh training dashboard")
 
+    gr.Markdown("## Human Evaluation")
+    gr.Markdown(
+        "Rate generated outputs from 1 (poor) to 5 (excellent) for meaning preservation, fluency, and style match."
+    )
+    human_evaluation_state = gr.State(value=_empty_human_evaluation_state())
+    with gr.Row():
+        evaluator_id = gr.Textbox(label="Evaluator name or code", placeholder="Optional: anonymous")
+        human_batch_size = gr.Dropdown(label="Evaluation batch size", choices=[10, 15, 20], value=10)
+        start_human_evaluation_button = gr.Button("Generate human evaluation batch", variant="primary")
+    human_evaluation_status = gr.Markdown("Generate a batch to begin.")
+    with gr.Row():
+        human_original = gr.Textbox(label="Original text", lines=4, interactive=False)
+        human_target_style = gr.Textbox(label="Target style", interactive=False)
+        human_generated = gr.Textbox(label="Generated output to rate", lines=4, interactive=False)
+    with gr.Row():
+        human_meaning = gr.Slider(label="Meaning preservation", minimum=1, maximum=5, step=1, value=3)
+        human_fluency = gr.Slider(label="Fluency", minimum=1, maximum=5, step=1, value=3)
+        human_style_match = gr.Slider(label="Style match", minimum=1, maximum=5, step=1, value=3)
+    submit_human_rating_button = gr.Button("Save rating and show next sample")
+    human_evaluation_summary = gr.Markdown()
+
     with gr.Row():
         benchmark_button = gr.Button("Run baseline vs reward-selected benchmark")
         benchmark_table = gr.Markdown(label="Benchmark results")
@@ -301,6 +436,44 @@ with gr.Blocks(title="RL Multi-Style Text Rewriter") as demo:
         fn=render_training_dashboard,
         inputs=[],
         outputs=[training_dashboard],
+    )
+
+    start_human_evaluation_button.click(
+        fn=start_human_evaluation,
+        inputs=[human_batch_size],
+        outputs=[
+            human_evaluation_state,
+            human_evaluation_status,
+            human_original,
+            human_target_style,
+            human_generated,
+            human_meaning,
+            human_fluency,
+            human_style_match,
+            human_evaluation_summary,
+        ],
+    )
+
+    submit_human_rating_button.click(
+        fn=submit_human_rating,
+        inputs=[
+            evaluator_id,
+            human_meaning,
+            human_fluency,
+            human_style_match,
+            human_evaluation_state,
+        ],
+        outputs=[
+            human_evaluation_state,
+            human_evaluation_status,
+            human_original,
+            human_target_style,
+            human_generated,
+            human_meaning,
+            human_fluency,
+            human_style_match,
+            human_evaluation_summary,
+        ],
     )
 
 
